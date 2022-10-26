@@ -1,8 +1,13 @@
+import 'dart:collection';
+import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:camera/camera.dart';
 import 'package:flutter_vision/flutter_vision.dart';
+import 'package:network_info_plus/network_info_plus.dart';
+
+const int ourPort = 8888;
 
 late List<CameraDescription> _cameras;
 
@@ -59,6 +64,9 @@ class MyHomePage extends StatefulWidget {
 class _MyHomePageState extends State<MyHomePage> {
   late CameraController controller;
   final CameraOpticFlowPainter _livePicture = CameraOpticFlowPainter();
+  String _ipAddr = "Awaiting IP Address...";
+  String _incoming = "Setting up server...";
+  final Queue<String> _requests = Queue();
 
   @override
   void initState() {
@@ -85,6 +93,69 @@ class _MyHomePageState extends State<MyHomePage> {
             break;
         }
       }
+    });
+
+    _setupServer();
+    _findIPAddress();
+  }
+
+  Widget makeCmdButton(String label, void Function() cmd, Color color) {
+    return SizedBox(
+        width: 100,
+        height: 100,
+        child: ElevatedButton(
+            onPressed: cmd,
+            style: ElevatedButton.styleFrom(
+                backgroundColor: color,
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(20))),
+            child: Text(label)));
+  }
+
+  Future<void> _findIPAddress() async {
+    // Thank you https://stackoverflow.com/questions/52411168/how-to-get-device-ip-in-dart-flutter
+    String? ip = await NetworkInfo().getWifiIP();
+    setState(() {
+      _ipAddr = "My IP: ${ip!}";
+    });
+  }
+
+  Future<void> _setupServer() async {
+    try {
+      ServerSocket server = await ServerSocket.bind(InternetAddress.anyIPv4, ourPort);
+      server.listen(_listenToSocket); // StreamSubscription<Socket>
+      setState(() {
+        _incoming = "Server ready";
+      });
+    } on SocketException catch (e) {
+      print("ServerSocket setup error: $e");
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text("Error: $e"),
+      ));
+    }
+  }
+
+  void _listenToSocket(Socket socket) {
+    socket.listen((data) {
+      String msg = String.fromCharCodes(data);
+      print("received $msg");
+      if (msg == "cmd") {
+        if (_requests.isEmpty) {
+          socket.write("None");
+        } else {
+          socket.write(_requests.removeFirst());
+        }
+      } else {
+        getProcessedData(msg);
+      }
+      socket.close();
+    });
+  }
+
+  Future<void> getProcessedData(String incomingData) async {
+    String processed = await api.processSensorData(incomingData: incomingData);
+    setState(() {
+      _incoming = processed;
     });
   }
 
@@ -120,8 +191,13 @@ class _MyHomePageState extends State<MyHomePage> {
                       Column(
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: <Widget>[
+                          makeCmdButton("Start", () {
+                            api.resetPositionEstimate().then((value) {_requests.addLast('Start');});
+                          }, Colors.purple),
+                          Text(_ipAddr),
                           Text("Grabbed: ${_livePicture.frameCount()} (${_livePicture.width()} x ${_livePicture.height()}) FPS: ${_livePicture.fps().toStringAsFixed(2)}"),
                           Text(shiftStr()),
+                          Text(_incoming),
                         ],
                       ),
                     ]
