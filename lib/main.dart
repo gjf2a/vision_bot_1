@@ -61,12 +61,17 @@ class MyHomePage extends StatefulWidget {
   State<MyHomePage> createState() => _MyHomePageState();
 }
 
+enum RobotState {
+  notStarted, started, stopped;
+}
+
 class _MyHomePageState extends State<MyHomePage> {
   late CameraController controller;
   final CameraOpticFlowPainter _livePicture = CameraOpticFlowPainter();
   String _ipAddr = "Awaiting IP Address...";
   String _incoming = "Setting up server...";
   final Queue<String> _requests = Queue();
+  RobotState _robotState = RobotState.notStarted;
 
   @override
   void initState() {
@@ -191,9 +196,7 @@ class _MyHomePageState extends State<MyHomePage> {
                       Column(
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: <Widget>[
-                          makeCmdButton("Start", () {
-                            api.resetPositionEstimate().then((value) {_requests.addLast('Start');});
-                          }, Colors.purple),
+                          _startStopButton(),
                           Text(_ipAddr),
                           Text("Grabbed: ${_livePicture.frameCount()} (${_livePicture.width()} x ${_livePicture.height()}) FPS: ${_livePicture.fps().toStringAsFixed(2)}"),
                           Text(shiftStr()),
@@ -205,6 +208,30 @@ class _MyHomePageState extends State<MyHomePage> {
             )
         )
     );
+  }
+
+  Widget _startStopButton() {
+    if (_robotState == RobotState.notStarted) {
+      return makeCmdButton("Start", () {
+        api.resetPositionEstimate().then((value) {
+          setState(() {
+            _robotState = RobotState.started;
+          });
+          _requests.addLast('Start');
+        });
+      }, Colors.purple);
+    } else if (_robotState == RobotState.started) {
+      return makeCmdButton("Stop", () {
+        api.resetPositionEstimate().then((value) {
+          setState(() {
+            _robotState = RobotState.stopped;
+          });
+          _requests.addLast('Stop');
+        });
+      }, Colors.red);
+    } else {
+      return const Text("Robot stopped");
+    }
   }
 }
 
