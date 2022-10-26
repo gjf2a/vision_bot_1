@@ -61,21 +61,23 @@ class MyHomePage extends StatefulWidget {
   State<MyHomePage> createState() => _MyHomePageState();
 }
 
-enum RobotState {
+enum RobotStatus {
   notStarted, started, stopped;
 }
 
 class _MyHomePageState extends State<MyHomePage> {
   late CameraController controller;
-  final CameraOpticFlowPainter _livePicture = CameraOpticFlowPainter();
+  final Queue<String> _requests = Queue();
+  late CameraOpticFlowPainter _livePicture;
   String _ipAddr = "Awaiting IP Address...";
   String _incoming = "Setting up server...";
-  final Queue<String> _requests = Queue();
-  RobotState _robotState = RobotState.notStarted;
+  RobotStatus _robotStatus = RobotStatus.notStarted;
+  RobotState _robotState = RobotState(left: WheelAction.stop, right: WheelAction.stop);
 
   @override
   void initState() {
     super.initState();
+    _livePicture = CameraOpticFlowPainter(_requests);
     controller = CameraController(_cameras[0], ResolutionPreset.medium);
     controller.initialize().then((_) {
       if (!mounted) {
@@ -83,7 +85,7 @@ class _MyHomePageState extends State<MyHomePage> {
       }
       controller.startImageStream((image) {
         setState(() {
-          _livePicture.setImage(image).whenComplete(() {});
+          _livePicture.setImageWithAction(image, _robotState).whenComplete(() {});
         });
       });
       setState(() {});
@@ -159,6 +161,8 @@ class _MyHomePageState extends State<MyHomePage> {
 
   Future<void> getProcessedData(String incomingData) async {
     String processed = await api.processSensorData(incomingData: incomingData);
+    SensorData data = await api.parseSensorData(incomingData: incomingData);
+    _robotState = RobotState.decode(data.actionTag);
     setState(() {
       _incoming = processed;
     });
@@ -211,20 +215,20 @@ class _MyHomePageState extends State<MyHomePage> {
   }
 
   Widget _startStopButton() {
-    if (_robotState == RobotState.notStarted) {
+    if (_robotStatus == RobotStatus.notStarted) {
       return makeCmdButton("Start", () {
         api.resetPositionEstimate().then((value) {
           setState(() {
-            _robotState = RobotState.started;
+            _robotStatus = RobotStatus.started;
           });
           _requests.addLast('Start');
         });
       }, Colors.purple);
-    } else if (_robotState == RobotState.started) {
+    } else if (_robotStatus == RobotStatus.started) {
       return makeCmdButton("Stop", () {
         api.resetPositionEstimate().then((value) {
           setState(() {
-            _robotState = RobotState.stopped;
+            _robotStatus = RobotStatus.stopped;
           });
           _requests.addLast('Stop');
         });
@@ -238,6 +242,29 @@ class _MyHomePageState extends State<MyHomePage> {
 class CameraOpticFlowPainter extends CameraImagePainter {
   Uint8List? _lastYs;
   CorrelationFlow? _shift;
+  RobotState _lastAction = RobotState(left: WheelAction.stop, right: WheelAction.stop);
+  Queue requests;
+
+  CameraOpticFlowPainter(this.requests);
+
+  Future<void> setImageWithAction(CameraImage img, RobotState action) async {
+    super.setImage(img);
+    Uint8List ys = img.planes[0].bytes;
+    if (_lastYs != null) {
+      _shift = await api.getCorrelationFlow(prevYs: _lastYs!, currentYs: ys, width: img.width, height: img.height);
+      if (action.straight()) {
+        if (_shift!.dx < 0) {
+          requests.addLast('Left');
+        } else if (_shift!.dx > 0) {
+          requests.addLast('Right');
+        }
+      }
+    }
+    if (_lastYs == null || action != _lastAction) {
+      _lastYs = ys;
+      _lastAction = action;
+    }
+  }
 
   @override
   Future<void> setImage(CameraImage img) async {
