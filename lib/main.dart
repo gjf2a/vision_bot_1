@@ -222,6 +222,7 @@ class _MyHomePageState extends State<MyHomePage> {
             _robotStatus = RobotStatus.started;
           });
           _requests.addLast('Start');
+          print("Sending Start");
         });
       }, Colors.purple);
     } else if (_robotStatus == RobotStatus.started) {
@@ -231,6 +232,7 @@ class _MyHomePageState extends State<MyHomePage> {
             _robotStatus = RobotStatus.stopped;
           });
           _requests.addLast('Stop');
+          print("Sending Stop");
         });
       }, Colors.red);
     } else {
@@ -252,12 +254,8 @@ class CameraOpticFlowPainter extends CameraImagePainter {
     Uint8List ys = img.planes[0].bytes;
     if (_lastYs != null) {
       _shift = await api.getCorrelationFlow(prevYs: _lastYs!, currentYs: ys, width: img.width, height: img.height);
-      if (action.straight()) {
-        if (_shift!.dx < 0) {
-          requests.addLast('Left');
-        } else if (_shift!.dx > 0) {
-          requests.addLast('Right');
-        }
+      if (requests.isEmpty) {
+        requests.addLast("${_shift!.dx} ${_shift!.dy}");
       }
     }
     if (_lastYs == null || action != _lastAction) {
