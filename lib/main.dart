@@ -229,7 +229,7 @@ class _MyHomePageState extends State<MyHomePage> {
       return makeCmdButton("Stop", () {
         api.resetPositionEstimate().then((value) {
           setState(() {
-            _robotStatus = RobotStatus.stopped;
+            _robotStatus = RobotStatus.notStarted;
           });
           _requests.addLast('Stop');
           print("Sending Stop");
