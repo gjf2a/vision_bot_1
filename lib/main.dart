@@ -162,7 +162,7 @@ class _MyHomePageState extends State<MyHomePage> {
   Future<void> getProcessedData(String incomingData) async {
     String processed = await api.processSensorData(incomingData: incomingData);
     SensorData data = await api.parseSensorData(incomingData: incomingData);
-    _robotState = RobotState.decode(data.actionTag);
+    _robotState = RobotState.decode(data);
     setState(() {
       _incoming = processed;
     });
